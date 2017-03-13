@@ -2,7 +2,7 @@
   +----------------------------------------------------------------------+
   | PHP Version 7                                                        |
   +----------------------------------------------------------------------+
-  | Copyright (c) 1997-2016 The PHP Group                                |
+  | Copyright (c) 1997-2017 The PHP Group                                |
   +----------------------------------------------------------------------+
   | This source file is subject to version 3.01 of the PHP license,      |
   | that is bundled with this package in the file LICENSE, and is        |
@@ -179,6 +179,9 @@ enum {
 	PDO_MYSQL_ATTR_SERVER_PUBLIC_KEY,
 #endif
 	PDO_MYSQL_ATTR_MULTI_STATEMENTS,
+#ifdef PDO_USE_MYSQLND
+	PDO_MYSQL_ATTR_SSL_VERIFY_SERVER_CERT,
+#endif
 };
 
 #endif

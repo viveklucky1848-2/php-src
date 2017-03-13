@@ -2,7 +2,7 @@
   +----------------------------------------------------------------------+
   | PHP Version 7                                                        |
   +----------------------------------------------------------------------+
-  | Copyright (c) 1997-2016 The PHP Group                                |
+  | Copyright (c) 1997-2017 The PHP Group                                |
   +----------------------------------------------------------------------+
   | This source file is subject to version 3.01 of the PHP license,      |
   | that is bundled with this package in the file LICENSE, and is        |
@@ -23,7 +23,7 @@
 #include "streams/php_streams_int.h"
 #include "php_network.h"
 
-#if defined(PHP_WIN32) || defined(__riscos__) || defined(NETWARE)
+#if defined(PHP_WIN32) || defined(__riscos__)
 # undef AF_UNIX
 #endif
 
@@ -336,7 +336,7 @@ static int php_sockop_set_option(php_stream *stream, int option, int value, void
 					ret = recv(sock->socket, &buf, sizeof(buf), MSG_PEEK);
 					err = php_socket_errno();
 					if (0 == ret || /* the counterpart did properly shutdown*/
-						(0 > ret && err != EWOULDBLOCK && err != EAGAIN)) { /* there was an unrecoverable error */
+						(0 > ret && err != EWOULDBLOCK && err != EAGAIN && err != EMSGSIZE)) { /* there was an unrecoverable error */
 						alive = 0;
 					}
 				}
@@ -571,37 +571,44 @@ static inline char *parse_ip_address_ex(const char *str, size_t str_len, int *po
 	char *host = NULL;
 
 #ifdef HAVE_IPV6
-	char *p;
-
 	if (*(str) == '[' && str_len > 1) {
 		/* IPV6 notation to specify raw address with port (i.e. [fe80::1]:80) */
-		p = memchr(str + 1, ']', str_len - 2);
+		char *p = memchr(str + 1, ']', str_len - 2), *e = NULL;
 		if (!p || *(p + 1) != ':') {
 			if (get_err) {
 				*err = strpprintf(0, "Failed to parse IPv6 address \"%s\"", str);
 			}
 			return NULL;
 		}
-		*portno = atoi(p + 2);
+		*portno = strtol(p + 2, &e, 10);
+		if (e && *e) {
+			if (get_err) {
+				*err = strpprintf(0, "Failed to parse address \"%s\"", str);
+			}
+			return NULL;
+		}
 		return estrndup(str + 1, p - str - 1);
 	}
 #endif
+
 	if (str_len) {
 		colon = memchr(str, ':', str_len - 1);
 	} else {
 		colon = NULL;
 	}
+
 	if (colon) {
-		*portno = atoi(colon + 1);
-		host = estrndup(str, colon - str);
-	} else {
-		if (get_err) {
-			*err = strpprintf(0, "Failed to parse address \"%s\"", str);
+		char *e = NULL;
+		*portno = strtol(colon + 1, &e, 10);
+		if (!e || !*e) {
+			return estrndup(str, colon - str);
 		}
-		return NULL;
 	}
 
-	return host;
+	if (get_err) {
+		*err = strpprintf(0, "Failed to parse address \"%s\"", str);
+	}
+	return NULL;
 }
 
 static inline char *parse_ip_address(php_stream_xport_param *xparam, int *portno)

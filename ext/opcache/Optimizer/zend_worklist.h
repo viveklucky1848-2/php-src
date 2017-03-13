@@ -2,7 +2,7 @@
    +----------------------------------------------------------------------+
    | Zend Engine                                                          |
    +----------------------------------------------------------------------+
-   | Copyright (c) 1998-2016 The PHP Group                                |
+   | Copyright (c) 1998-2017 The PHP Group                                |
    +----------------------------------------------------------------------+
    | This source file is subject to version 3.01 of the PHP license,      |
    | that is bundled with this package in the file LICENSE, and is        |
@@ -77,10 +77,10 @@ typedef struct _zend_worklist {
 } zend_worklist;
 
 #define ZEND_WORKLIST_ALLOCA(w, _len, use_heap) do { \
-		(w)->stack.buf = (int*)do_alloca(sizeof(int) * _len + sizeof(zend_ulong) * zend_bitset_len(_len), use_heap); \
+		(w)->stack.buf = (int*)do_alloca(ZEND_MM_ALIGNED_SIZE(sizeof(int) * _len) + sizeof(zend_ulong) * zend_bitset_len(_len), use_heap); \
 		(w)->stack.len = 0; \
 		(w)->stack.capacity = _len; \
-		(w)->visited = (zend_bitset)((w)->stack.buf + _len); \
+		(w)->visited = (zend_bitset)((char*)(w)->stack.buf + ZEND_MM_ALIGNED_SIZE(sizeof(int) * _len)); \
 		memset((w)->visited, 0, sizeof(zend_ulong) * zend_bitset_len(_len)); \
 	} while (0)
 

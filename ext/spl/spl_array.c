@@ -2,7 +2,7 @@
    +----------------------------------------------------------------------+
    | PHP Version 7                                                        |
    +----------------------------------------------------------------------+
-   | Copyright (c) 1997-2016 The PHP Group                                |
+   | Copyright (c) 1997-2017 The PHP Group                                |
    +----------------------------------------------------------------------+
    | This source file is subject to version 3.01 of the PHP license,      |
    | that is bundled with this package in the file LICENSE, and is        |
@@ -295,7 +295,7 @@ static zval *spl_array_get_dimension_ptr(int check_inherited, spl_array_object *
 	zend_string *offset_key;
 	HashTable *ht = spl_array_get_hash_table(intern);
 
-	if (!offset || Z_ISUNDEF_P(offset)) {
+	if (!offset || Z_ISUNDEF_P(offset) || !ht) {
 		return &EG(uninitialized_zval);
 	}
 
@@ -901,6 +901,11 @@ static zval *spl_array_get_property_ptr_ptr(zval *object, zval *member, int type
 
 	if ((intern->ar_flags & SPL_ARRAY_ARRAY_AS_PROPS) != 0
 		&& !std_object_handlers.has_property(object, member, 2, NULL)) {
+		/* If object has offsetGet() overridden, then fallback to read_property,
+		 * which will call offsetGet(). */
+		if (intern->fptr_offset_get) {
+			return NULL;
+		}
 		return spl_array_get_dimension_ptr(1, intern, member, type);
 	}
 	return std_object_handlers.get_property_ptr_ptr(object, member, type, cache_slot);
@@ -1112,7 +1117,7 @@ static void spl_array_it_rewind(zend_object_iterator *iter) /* {{{ */
 /* {{{ spl_array_set_array */
 static void spl_array_set_array(zval *object, spl_array_object *intern, zval *array, zend_long ar_flags, int just_array) {
 	if (Z_TYPE_P(array) != IS_OBJECT && Z_TYPE_P(array) != IS_ARRAY) {
-		zend_throw_exception(spl_ce_InvalidArgumentException, "Passed variable is not an array or object, using empty array instead", 0);
+		zend_throw_exception(spl_ce_InvalidArgumentException, "Passed variable is not an array or object", 0);
 		return;
 	}
 
@@ -1225,15 +1230,9 @@ SPL_METHOD(Array, setIteratorClass)
 	spl_array_object *intern = Z_SPLARRAY_P(object);
 	zend_class_entry * ce_get_iterator = spl_ce_Iterator;
 
-#ifndef FAST_ZPP
-	if (zend_parse_parameters(ZEND_NUM_ARGS(), "C", &ce_get_iterator) == FAILURE) {
-		return;
-	}
-#else
 	ZEND_PARSE_PARAMETERS_START(1, 1)
 		Z_PARAM_CLASS(ce_get_iterator)
 	ZEND_PARSE_PARAMETERS_END();
-#endif
 
 	intern->ce_get_iterator = ce_get_iterator;
 }
@@ -1797,7 +1796,8 @@ SPL_METHOD(Array, unserialize)
 		intern->ar_flags |= flags & SPL_ARRAY_CLONE_MASK;
 		zval_ptr_dtor(&intern->array);
 		ZVAL_UNDEF(&intern->array);
-		if (!php_var_unserialize(&intern->array, &p, s + buf_len, &var_hash)) {
+		if (!php_var_unserialize(&intern->array, &p, s + buf_len, &var_hash)
+				|| (Z_TYPE(intern->array) != IS_ARRAY && Z_TYPE(intern->array) != IS_OBJECT)) {
 			goto outexcept;
 		}
 		var_push_dtor(&var_hash, &intern->array);

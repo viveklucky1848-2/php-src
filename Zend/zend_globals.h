@@ -2,7 +2,7 @@
    +----------------------------------------------------------------------+
    | Zend Engine                                                          |
    +----------------------------------------------------------------------+
-   | Copyright (c) 1998-2016 Zend Technologies Ltd. (http://www.zend.com) |
+   | Copyright (c) 1998-2017 Zend Technologies Ltd. (http://www.zend.com) |
    +----------------------------------------------------------------------+
    | This source file is subject to version 2.00 of the Zend license,     |
    | that is bundled with this package in the file LICENSE, and is        |
@@ -105,17 +105,10 @@ struct _zend_compiler_globals {
 
 	uint32_t compiler_options; /* set of ZEND_COMPILE_* constants */
 
-	HashTable const_filenames;
-
 	zend_oparray_context context;
 	zend_file_context file_context;
 
 	zend_arena *arena;
-
-	zend_string *empty_string;
-	zend_string *one_char_string[256];
-	zend_string **known_strings;
-	uint32_t    known_strings_count;
 
 	HashTable interned_strings;
 
@@ -216,6 +209,7 @@ struct _zend_executor_globals {
 
 	zend_bool active;
 	zend_bool valid_symbol_table;
+	zend_uchar flags;
 
 	zend_long assertions;
 
@@ -232,8 +226,13 @@ struct _zend_executor_globals {
 	zend_function trampoline;
 	zend_op       call_trampoline_op;
 
+	zend_bool each_deprecation_thrown;
+
 	void *reserved[ZEND_MAX_RESERVED_RESOURCES];
 };
+
+#define EG_FLAGS_INITIAL	0x00
+#define EG_FLAGS_IN_SHUTDOWN	0x01
 
 struct _zend_ini_scanner_globals {
 	zend_file_handle *yy_in;

@@ -2,7 +2,7 @@
    +----------------------------------------------------------------------+
    | Zend Engine, SSA - Static Single Assignment Form                     |
    +----------------------------------------------------------------------+
-   | Copyright (c) 1998-2016 The PHP Group                                |
+   | Copyright (c) 1998-2017 The PHP Group                                |
    +----------------------------------------------------------------------+
    | This source file is subject to version 3.01 of the PHP license,      |
    | that is bundled with this package in the file LICENSE, and is        |
@@ -77,12 +77,12 @@ static zend_ssa_phi *add_pi(
 	}
 
 	phi = zend_arena_calloc(arena, 1,
-		sizeof(zend_ssa_phi) +
-		sizeof(int) * ssa->cfg.blocks[to].predecessors_count +
+		ZEND_MM_ALIGNED_SIZE(sizeof(zend_ssa_phi)) +
+		ZEND_MM_ALIGNED_SIZE(sizeof(int) * ssa->cfg.blocks[to].predecessors_count) +
 		sizeof(void*) * ssa->cfg.blocks[to].predecessors_count);
-	phi->sources = (int*)(((char*)phi) + sizeof(zend_ssa_phi));
+	phi->sources = (int*)(((char*)phi) + ZEND_MM_ALIGNED_SIZE(sizeof(zend_ssa_phi)));
 	memset(phi->sources, 0xff, sizeof(int) * ssa->cfg.blocks[to].predecessors_count);
-	phi->use_chains = (zend_ssa_phi**)(((char*)phi->sources) + sizeof(int) * ssa->cfg.blocks[to].predecessors_count);
+	phi->use_chains = (zend_ssa_phi**)(((char*)phi->sources) + ZEND_MM_ALIGNED_SIZE(sizeof(int) * ssa->cfg.blocks[to].predecessors_count));
 
 	phi->pi = from;
 	phi->var = var;
@@ -192,7 +192,7 @@ static int find_adjusted_tmp_var(const zend_op_array *op_array, uint32_t build_f
 					return EX_VAR_TO_NUM(op->op1.var);
 				}
 			} else if (op->op2_type == IS_CV && op->op1_type == IS_CONST) {
-				zv = CRT_CONSTANT(op->op2);
+				zv = CRT_CONSTANT(op->op1);
 				if (Z_TYPE_P(zv) == IS_LONG
 				 && Z_LVAL_P(zv) != ZEND_LONG_MIN) {
 					*adjustment = -Z_LVAL_P(zv);
@@ -589,32 +589,32 @@ static int zend_ssa_rename(const zend_op_array *op_array, uint32_t build_flags, 
 			}
 			switch (opline->opcode) {
 				case ZEND_ASSIGN:
-					if (opline->op1_type == IS_CV) {
-						ssa_ops[k].op1_def = ssa_vars_count;
-						var[EX_VAR_TO_NUM(opline->op1.var)] = ssa_vars_count;
-						ssa_vars_count++;
-						//NEW_SSA_VAR(opline->op1.var)
-					}
 					if ((build_flags & ZEND_SSA_RC_INFERENCE) && opline->op2_type == IS_CV) {
 						ssa_ops[k].op2_def = ssa_vars_count;
 						var[EX_VAR_TO_NUM(opline->op2.var)] = ssa_vars_count;
 						ssa_vars_count++;
 						//NEW_SSA_VAR(opline->op2.var)
 					}
-					break;
-				case ZEND_ASSIGN_REF:
-//TODO: ???
 					if (opline->op1_type == IS_CV) {
 						ssa_ops[k].op1_def = ssa_vars_count;
 						var[EX_VAR_TO_NUM(opline->op1.var)] = ssa_vars_count;
 						ssa_vars_count++;
 						//NEW_SSA_VAR(opline->op1.var)
 					}
+					break;
+				case ZEND_ASSIGN_REF:
+//TODO: ???
 					if (opline->op2_type == IS_CV) {
 						ssa_ops[k].op2_def = ssa_vars_count;
 						var[EX_VAR_TO_NUM(opline->op2.var)] = ssa_vars_count;
 						ssa_vars_count++;
 						//NEW_SSA_VAR(opline->op2.var)
+					}
+					if (opline->op1_type == IS_CV) {
+						ssa_ops[k].op1_def = ssa_vars_count;
+						var[EX_VAR_TO_NUM(opline->op1.var)] = ssa_vars_count;
+						ssa_vars_count++;
+						//NEW_SSA_VAR(opline->op1.var)
 					}
 					break;
 				case ZEND_BIND_GLOBAL:
@@ -651,6 +651,18 @@ static int zend_ssa_rename(const zend_op_array *op_array, uint32_t build_flags, 
 						var[EX_VAR_TO_NUM(opline->op1.var)] = ssa_vars_count;
 						ssa_vars_count++;
 						//NEW_SSA_VAR(opline+->op1.var)
+					}
+					break;
+				case ZEND_SEND_VAR:
+				case ZEND_CAST:
+				case ZEND_QM_ASSIGN:
+				case ZEND_JMP_SET:
+				case ZEND_COALESCE:
+					if ((build_flags & ZEND_SSA_RC_INFERENCE) && opline->op1_type == IS_CV) {
+						ssa_ops[k].op1_def = ssa_vars_count;
+						var[EX_VAR_TO_NUM(opline->op1.var)] = ssa_vars_count;
+						ssa_vars_count++;
+						//NEW_SSA_VAR(opline->op1.var)
 					}
 					break;
 				case ZEND_SEND_VAR_NO_REF:
@@ -846,6 +858,11 @@ int zend_build_ssa(zend_arena **arena, const zend_script *script, const zend_op_
 	ALLOCA_FLAG(dfg_use_heap)
 	ALLOCA_FLAG(var_use_heap)
 
+	if ((blocks_count * (op_array->last_var + op_array->T)) > 4 * 1024 * 1024) {
+	    /* Don't buld SSA for very big functions */
+		return FAILURE;
+	}
+
 	ssa->rt_constants = (build_flags & ZEND_RT_CONSTANTS);
 	ssa_blocks = zend_arena_calloc(arena, blocks_count, sizeof(zend_ssa_block));
 	if (!ssa_blocks) {
@@ -929,13 +946,13 @@ int zend_build_ssa(zend_arena **arena, const zend_script *script, const zend_op_
 		if (!zend_bitset_empty(phi + j * set_size, set_size)) {
 			ZEND_BITSET_REVERSE_FOREACH(phi + j * set_size, set_size, i) {
 				zend_ssa_phi *phi = zend_arena_calloc(arena, 1,
-					sizeof(zend_ssa_phi) +
-					sizeof(int) * blocks[j].predecessors_count +
+					ZEND_MM_ALIGNED_SIZE(sizeof(zend_ssa_phi)) +
+					ZEND_MM_ALIGNED_SIZE(sizeof(int) * blocks[j].predecessors_count) +
 					sizeof(void*) * blocks[j].predecessors_count);
 
-				phi->sources = (int*)(((char*)phi) + sizeof(zend_ssa_phi));
+				phi->sources = (int*)(((char*)phi) + ZEND_MM_ALIGNED_SIZE(sizeof(zend_ssa_phi)));
 				memset(phi->sources, 0xff, sizeof(int) * blocks[j].predecessors_count);
-				phi->use_chains = (zend_ssa_phi**)(((char*)phi->sources) + sizeof(int) * ssa->cfg.blocks[j].predecessors_count);
+				phi->use_chains = (zend_ssa_phi**)(((char*)phi->sources) + ZEND_MM_ALIGNED_SIZE(sizeof(int) * ssa->cfg.blocks[j].predecessors_count));
 
 				phi->pi = -1;
 				phi->var = i;

@@ -2,7 +2,7 @@
    +----------------------------------------------------------------------+
    | PHP Version 7                                                        |
    +----------------------------------------------------------------------+
-   | Copyright (c) 1997-2016 The PHP Group                                |
+   | Copyright (c) 1997-2017 The PHP Group                                |
    +----------------------------------------------------------------------+
    | This source file is subject to version 3.01 of the PHP license,      |
    | that is bundled with this package in the file LICENSE, and is        |
@@ -1386,6 +1386,11 @@ void php_oci_define_hash_dtor(zval *data)
 void php_oci_bind_hash_dtor(zval *data)
 {
 	php_oci_bind *bind = (php_oci_bind *) Z_PTR_P(data);
+
+	if (!Z_ISUNDEF(bind->parameter)) {
+		zval_ptr_dtor(&bind->parameter);
+		ZVAL_UNDEF(&bind->parameter);
+	}
 
 	if (bind->array.elements) {
 		efree(bind->array.elements);
